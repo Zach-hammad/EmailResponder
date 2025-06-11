@@ -16,6 +16,8 @@
 import os.path
 import base64
 import time
+import argparse
+import logging
 from email.mime.text import MIMEText
 
 from google.auth.transport.requests import Request
@@ -41,36 +43,55 @@ def create_draft(service, user_id, to_addr, subject, body_text, thread_id=None):
   return service.users().drafts().create(userId=user_id, body=body).execute()
 
 
-def check_unread_and_draft(service):
-  """Poll unread messages every 10 minutes and create a draft reply."""
+def check_unread_and_draft(service, interval=600, max_results=10):
+  """Poll unread messages and create draft replies."""
   while True:
-    results = service.users().messages().list(
-        userId="me", labelIds=["UNREAD"], maxResults=10
-    ).execute()
-    messages = results.get("messages", [])
-    for msg_meta in messages:
-      msg = service.users().messages().get(
-          userId="me",
-          id=msg_meta["id"],
-          format="metadata",
-          metadataHeaders=["From", "Subject"],
+    try:
+      results = service.users().messages().list(
+          userId="me", labelIds=["UNREAD"], maxResults=max_results
       ).execute()
-      headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
-      sender = headers.get("From", "")
-      subject = headers.get("Subject", "")
-      create_draft(
-          service,
-          "me",
-          sender,
-          f"Re: {subject}",
-          "Thank you for your email.",
-          thread_id=msg.get("threadId"),
-      )
-    time.sleep(600)
+      messages = results.get("messages", [])
+      for msg_meta in messages:
+        msg = service.users().messages().get(
+            userId="me",
+            id=msg_meta["id"],
+            format="metadata",
+            metadataHeaders=["From", "Subject"],
+        ).execute()
+        headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
+        sender = headers.get("From", "")
+        subject = headers.get("Subject", "")
+        create_draft(
+            service,
+            "me",
+            sender,
+            f"Re: {subject}",
+            "Thank you for your email.",
+            thread_id=msg.get("threadId"),
+        )
+    except HttpError as error:
+      logging.error("Failed to poll Gmail: %s", error)
+    time.sleep(interval)
 
 
 def main():
-  """Check unread messages and draft a response every 10 minutes."""
+  """Check unread messages and draft a response."""
+  parser = argparse.ArgumentParser(description="Check unread messages and draft a response")
+  parser.add_argument(
+      "--interval",
+      type=int,
+      default=600,
+      help="Polling interval in seconds",
+  )
+  parser.add_argument(
+      "--max-results",
+      type=int,
+      default=10,
+      help="Maximum messages to fetch per poll",
+  )
+  args = parser.parse_args()
+
+  logging.basicConfig(level=logging.INFO)
   creds = None
   # The file token.json stores the user's access and refresh tokens, and is
   # created automatically when the authorization flow completes for the first
@@ -92,9 +113,9 @@ def main():
 
   try:
     service = build("gmail", "v1", credentials=creds)
-    check_unread_and_draft(service)
+    check_unread_and_draft(service, interval=args.interval, max_results=args.max_results)
   except HttpError as error:
-    print(f"An error occurred: {error}")
+    logging.error("An error occurred: %s", error)
 
 
 if __name__ == "__main__":
