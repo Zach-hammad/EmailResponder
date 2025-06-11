@@ -144,6 +144,7 @@ def main() -> None:
 
     try:
         service = init_gmail_service()
+        service = build("gmail", "v1", credentials=creds, cache_discovery=False)
         check_unread_and_draft(service, interval=args.interval, max_results=args.max_results)
     except Exception as error:  # pragma: no cover - depends on google libs
         logging.error("An error occurred: %s", error)
