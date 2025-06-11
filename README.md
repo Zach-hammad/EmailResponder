@@ -23,6 +23,10 @@ This simple script checks a Gmail inbox for unread messages and drafts a reply t
 2. Download the `credentials.json` file and place it in the project root.
 3. The first time you run the script, a browser window will open to authorize access to Gmail. A `token.json` file will be generated and saved for future runs.
 
+## OpenAI API Key
+
+Draft replies are generated using the OpenAI API. Set the `OPENAI_API_KEY` environment variable with your key before running the responder.
+
 ## Usage
 
 Run the responder with Python:
