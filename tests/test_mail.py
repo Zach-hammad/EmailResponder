@@ -34,6 +34,27 @@ class TestCreateDraft(unittest.TestCase):
         self.assertEqual(result, {"id": "draft1"})
 
 
+class TestGenerateReply(unittest.TestCase):
+    @patch("openai.OpenAI")
+    def test_generate_reply_uses_client(self, mock_openai):
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        response_mock = MagicMock()
+        response_mock.choices = [MagicMock(message=MagicMock(content="Hi"))]
+        mock_client.chat.completions.create.return_value = response_mock
+
+        result = mail.generate_reply("sender@example.com", "Test")
+
+        mock_openai.assert_called_once_with()
+        mock_client.chat.completions.create.assert_called_once()
+        self.assertEqual(result, "Hi")
+
+    def test_generate_reply_without_openai(self):
+        with patch.dict("sys.modules", {"openai": None}):
+            result = mail.generate_reply("sender@example.com", "Test")
+        self.assertEqual(result, "Thank you for your email.")
+
+
 class TestCheckUnreadAndDraft(unittest.TestCase):
     @patch("mail.time.sleep", side_effect=StopIteration)
     @patch("mail.create_draft")
