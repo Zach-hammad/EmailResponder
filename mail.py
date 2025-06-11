@@ -1,25 +1,10 @@
-# Copyright 2018 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-# [START gmail_quickstart]
 import os.path
 import base64
 import time
 import argparse
 import logging
 from email.mime.text import MIMEText
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -27,7 +12,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import Resource, build
 from googleapiclient.errors import HttpError
 
-# If modifying these scopes, delete the file token.json.
+
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.modify",
     "https://www.googleapis.com/auth/gmail.compose",
@@ -48,152 +33,109 @@ def create_draft(
     message["from"] = user_id
     message["subject"] = subject
     encoded = base64.urlsafe_b64encode(message.as_bytes()).decode()
-    body = {"message": {"raw": encoded}}
+    body: Dict[str, Any] = {"message": {"raw": encoded}}
     if thread_id:
         body["message"]["threadId"] = thread_id
     return service.users().drafts().create(userId=user_id, body=body).execute()
 
 
-def check_unread_and_draft(service: Resource) -> None:
-    """Poll unread messages every 10 minutes and create a draft reply."""
-    while True:
-        results = (
-            service.users()
-            .messages()
-            .list(userId="me", labelIds=["UNREAD"], maxResults=10)
-            .execute()
+def generate_reply(sender: str, subject: str) -> str:
+    """Generate a reply body using the OpenAI API."""
+    try:
+        import openai
+    except Exception as exc:  # pragma: no cover - only triggered if openai missing
+        logging.error("Failed to import openai: %s", exc)
+        return "Thank you for your email."
+    prompt = (
+        f"Write a short polite reply to an email from {sender} with subject \"{subject}\"."
+    )
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=60,
         )
-        messages = results.get("messages", [])
-        for msg_meta in messages:
-            msg = (
+        return response["choices"][0]["message"]["content"].strip()
+    except Exception as exc:
+        logging.error("Failed to generate reply: %s", exc)
+        return "Thank you for your email."
+
+
+def check_unread_and_draft(service: Resource, interval: int = 600, max_results: int = 10) -> None:
+    """Poll unread messages and create draft replies."""
+    while True:
+        try:
+            results = (
                 service.users()
                 .messages()
-                .get(
-                    userId="me",
-                    id=msg_meta["id"],
-                    format="metadata",
-                    metadataHeaders=["From", "Subject"],
-                )
+                .list(userId="me", labelIds=["UNREAD"], maxResults=max_results)
                 .execute()
             )
-            headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
-            sender = headers.get("From", "")
-            subject = headers.get("Subject", "")
-            create_draft(
-                service,
-                "me",
-                sender,
-                f"Re: {subject}",
-                "Thank you for your email.",
-                thread_id=msg.get("threadId"),
-            )
-        time.sleep(600)
+            messages = results.get("messages", [])
+            for msg_meta in messages:
+                msg = (
+                    service.users()
+                    .messages()
+                    .get(
+                        userId="me",
+                        id=msg_meta["id"],
+                        format="metadata",
+                        metadataHeaders=["From", "Subject"],
+                    )
+                    .execute()
+                )
+                headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
+                sender = headers.get("From", "")
+                subject = headers.get("Subject", "")
+                body = generate_reply(sender, subject)
+                create_draft(
+                    service,
+                    "me",
+                    sender,
+                    f"Re: {subject}",
+                    body,
+                    thread_id=msg.get("threadId"),
+                )
+        except HttpError as error:
+            logging.error("Failed to poll Gmail: %s", error)
+        time.sleep(interval)
 
 
 def main() -> None:
-    """Check unread messages and draft a response every 10 minutes."""
+    """Check unread messages and draft a response."""
+    parser = argparse.ArgumentParser(
+        description="Check unread messages and draft a response"
+    )
+    parser.add_argument(
+        "--interval", type=int, default=600, help="Polling interval in seconds"
+    )
+    parser.add_argument(
+        "--max-results",
+        type=int,
+        default=10,
+        help="Maximum messages to fetch per poll",
+    )
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO)
     creds: Credentials | None = None
-    # The file token.json stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
     if os.path.exists("token.json"):
         creds = Credentials.from_authorized_user_file("token.json", SCOPES)
-    # If there are no (valid) credentials available, let the user log in.
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
             creds = flow.run_local_server(port=0)
-        # Save the credentials for the next run
         with open("token.json", "w") as token:
             token.write(creds.to_json())
 
     try:
-        service: Resource = build("gmail", "v1", credentials=creds)
-        check_unread_and_draft(service)
+        service = build("gmail", "v1", credentials=creds)
+        check_unread_and_draft(service, interval=args.interval, max_results=args.max_results)
     except HttpError as error:
-        print(f"An error occurred: {error}")
+        logging.error("An error occurred: %s", error)
 
 
 if __name__ == "__main__":
     main()
-=======
-def check_unread_and_draft(service, interval=600, max_results=10):
-  """Poll unread messages and create draft replies."""
-  while True:
-    try:
-      results = service.users().messages().list(
-          userId="me", labelIds=["UNREAD"], maxResults=max_results
-      ).execute()
-      messages = results.get("messages", [])
-      for msg_meta in messages:
-        msg = service.users().messages().get(
-            userId="me",
-            id=msg_meta["id"],
-            format="metadata",
-            metadataHeaders=["From", "Subject"],
-        ).execute()
-        headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
-        sender = headers.get("From", "")
-        subject = headers.get("Subject", "")
-        create_draft(
-            service,
-            "me",
-            sender,
-            f"Re: {subject}",
-            "Thank you for your email.",
-            thread_id=msg.get("threadId"),
-        )
-    except HttpError as error:
-      logging.error("Failed to poll Gmail: %s", error)
-    time.sleep(interval)
-
-
-def main():
-  """Check unread messages and draft a response."""
-  parser = argparse.ArgumentParser(description="Check unread messages and draft a response")
-  parser.add_argument(
-      "--interval",
-      type=int,
-      default=600,
-      help="Polling interval in seconds",
-  )
-  parser.add_argument(
-      "--max-results",
-      type=int,
-      default=10,
-      help="Maximum messages to fetch per poll",
-  )
-  args = parser.parse_args()
-
-  logging.basicConfig(level=logging.INFO)
-  creds = None
-  # The file token.json stores the user's access and refresh tokens, and is
-  # created automatically when the authorization flow completes for the first
-  # time.
-  if os.path.exists("token.json"):
-    creds = Credentials.from_authorized_user_file("token.json", SCOPES)
-  # If there are no (valid) credentials available, let the user log in.
-  if not creds or not creds.valid:
-    if creds and creds.expired and creds.refresh_token:
-      creds.refresh(Request())
-    else:
-      flow = InstalledAppFlow.from_client_secrets_file(
-          "credentials.json", SCOPES
-      )
-      creds = flow.run_local_server(port=0)
-    # Save the credentials for the next run
-    with open("token.json", "w") as token:
-      token.write(creds.to_json())
-
-  try:
-    service = build("gmail", "v1", credentials=creds)
-    check_unread_and_draft(service, interval=args.interval, max_results=args.max_results)
-  except HttpError as error:
-    logging.error("An error occurred: %s", error)
-
-
-if __name__ == "__main__":
-  main()
-# [END gmail_quickstart]
