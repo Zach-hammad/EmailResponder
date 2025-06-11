@@ -6,11 +6,7 @@ import logging
 from email.mime.text import MIMEText
 from typing import Any, Dict, Optional
 
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import Resource, build
-from googleapiclient.errors import HttpError
+# Google libraries are imported lazily so tests can run without them installed.
 
 
 SCOPES = [
@@ -20,7 +16,7 @@ SCOPES = [
 
 
 def create_draft(
-    service: Resource,
+    service: Any,
     user_id: str,
     to_addr: str,
     subject: str,
@@ -61,8 +57,13 @@ def generate_reply(sender: str, subject: str) -> str:
         return "Thank you for your email."
 
 
-def check_unread_and_draft(service: Resource, interval: int = 600, max_results: int = 10) -> None:
+def check_unread_and_draft(service: Any, interval: int = 600, max_results: int = 10) -> None:
     """Poll unread messages and create draft replies."""
+    try:
+        from googleapiclient.errors import HttpError  # type: ignore
+    except Exception:  # pragma: no cover - imported only when google libs present
+        HttpError = Exception
+
     while True:
         try:
             results = (
@@ -101,6 +102,28 @@ def check_unread_and_draft(service: Resource, interval: int = 600, max_results: 
         time.sleep(interval)
 
 
+def init_gmail_service() -> Any:
+    """Initialize the Gmail API service."""
+    from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
+    from google_auth_oauthlib.flow import InstalledAppFlow
+    from googleapiclient.discovery import build
+
+    creds: Any = None
+    if os.path.exists("token.json"):
+        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+    if not creds or not getattr(creds, "valid", False):
+        if creds and getattr(creds, "expired", False) and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
+            creds = flow.run_local_server(port=0)
+        with open("token.json", "w") as token:
+            token.write(creds.to_json())
+
+    return build("gmail", "v1", credentials=creds)
+
+
 def main() -> None:
     """Check unread messages and draft a response."""
     parser = argparse.ArgumentParser(
@@ -118,22 +141,11 @@ def main() -> None:
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
-    creds: Credentials | None = None
-    if os.path.exists("token.json"):
-        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
-            creds = flow.run_local_server(port=0)
-        with open("token.json", "w") as token:
-            token.write(creds.to_json())
 
     try:
-        service = build("gmail", "v1", credentials=creds)
+        service = init_gmail_service()
         check_unread_and_draft(service, interval=args.interval, max_results=args.max_results)
-    except HttpError as error:
+    except Exception as error:  # pragma: no cover - depends on google libs
         logging.error("An error occurred: %s", error)
 
 
