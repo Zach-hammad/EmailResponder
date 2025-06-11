@@ -123,7 +123,7 @@ def init_gmail_service() -> Any:
         with open("token.json", "w") as token:
             token.write(creds.to_json())
 
-    return build("gmail", "v1", credentials=creds)
+    return build("gmail", "v1", credentials=creds, cache_discovery=False)
 
 
 def main() -> None:
@@ -146,7 +146,6 @@ def main() -> None:
 
     try:
         service = init_gmail_service()
-        service = build("gmail", "v1", credentials=creds, cache_discovery=False)
         check_unread_and_draft(service, interval=args.interval, max_results=args.max_results)
     except Exception as error:  # pragma: no cover - depends on google libs
         logging.error("An error occurred: %s", error)
