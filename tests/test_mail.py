@@ -1,7 +1,45 @@
 import base64
+import sys
+import types
 import unittest
 from email.mime.text import MIMEText
 from unittest.mock import MagicMock, patch
+
+# Provide stub modules for Google APIs when the real packages are unavailable.
+if "googleapiclient.discovery" not in sys.modules:
+    discovery = types.ModuleType("googleapiclient.discovery")
+    discovery.Resource = MagicMock()
+    discovery.build = MagicMock()
+    sys.modules["googleapiclient.discovery"] = discovery
+
+if "googleapiclient.errors" not in sys.modules:
+    errors = types.ModuleType("googleapiclient.errors")
+
+    class HttpError(Exception):
+        pass
+
+    errors.HttpError = HttpError
+    sys.modules["googleapiclient.errors"] = errors
+
+if "google.auth.transport.requests" not in sys.modules:
+    transport = types.ModuleType("google.auth.transport.requests")
+    transport.Request = MagicMock()
+    sys.modules["google.auth.transport.requests"] = transport
+
+if "google.oauth2.credentials" not in sys.modules:
+    credentials = types.ModuleType("google.oauth2.credentials")
+    credentials.Credentials = MagicMock()
+    sys.modules["google.oauth2.credentials"] = credentials
+
+if "google_auth_oauthlib.flow" not in sys.modules:
+    flow = types.ModuleType("google_auth_oauthlib.flow")
+    flow.InstalledAppFlow = MagicMock()
+    sys.modules["google_auth_oauthlib.flow"] = flow
+
+if "openai" not in sys.modules:
+    openai_mod = types.ModuleType("openai")
+    openai_mod.OpenAI = MagicMock()
+    sys.modules["openai"] = openai_mod
 
 import mail
 
