@@ -43,19 +43,21 @@ def generate_reply(sender: str, subject: str) -> str:
     """Generate a reply body using the OpenAI API."""
     try:
         import openai
+        client = openai.OpenAI()
     except Exception as exc:  # pragma: no cover - only triggered if openai missing
         logging.error("Failed to import openai: %s", exc)
         return "Thank you for your email."
+
     prompt = (
         f"Write a short polite reply to an email from {sender} with subject \"{subject}\"."
     )
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=60,
         )
-        return response["choices"][0]["message"]["content"].strip()
+        return response.choices[0].message.content.strip()
     except Exception as exc:
         logging.error("Failed to generate reply: %s", exc)
         return "Thank you for your email."
