@@ -16,6 +16,8 @@
 import os.path
 import base64
 import time
+import argparse
+import logging
 from email.mime.text import MIMEText
 from typing import Dict, Optional
 
@@ -116,4 +118,82 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+=======
+def check_unread_and_draft(service, interval=600, max_results=10):
+  """Poll unread messages and create draft replies."""
+  while True:
+    try:
+      results = service.users().messages().list(
+          userId="me", labelIds=["UNREAD"], maxResults=max_results
+      ).execute()
+      messages = results.get("messages", [])
+      for msg_meta in messages:
+        msg = service.users().messages().get(
+            userId="me",
+            id=msg_meta["id"],
+            format="metadata",
+            metadataHeaders=["From", "Subject"],
+        ).execute()
+        headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
+        sender = headers.get("From", "")
+        subject = headers.get("Subject", "")
+        create_draft(
+            service,
+            "me",
+            sender,
+            f"Re: {subject}",
+            "Thank you for your email.",
+            thread_id=msg.get("threadId"),
+        )
+    except HttpError as error:
+      logging.error("Failed to poll Gmail: %s", error)
+    time.sleep(interval)
+
+
+def main():
+  """Check unread messages and draft a response."""
+  parser = argparse.ArgumentParser(description="Check unread messages and draft a response")
+  parser.add_argument(
+      "--interval",
+      type=int,
+      default=600,
+      help="Polling interval in seconds",
+  )
+  parser.add_argument(
+      "--max-results",
+      type=int,
+      default=10,
+      help="Maximum messages to fetch per poll",
+  )
+  args = parser.parse_args()
+
+  logging.basicConfig(level=logging.INFO)
+  creds = None
+  # The file token.json stores the user's access and refresh tokens, and is
+  # created automatically when the authorization flow completes for the first
+  # time.
+  if os.path.exists("token.json"):
+    creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+  # If there are no (valid) credentials available, let the user log in.
+  if not creds or not creds.valid:
+    if creds and creds.expired and creds.refresh_token:
+      creds.refresh(Request())
+    else:
+      flow = InstalledAppFlow.from_client_secrets_file(
+          "credentials.json", SCOPES
+      )
+      creds = flow.run_local_server(port=0)
+    # Save the credentials for the next run
+    with open("token.json", "w") as token:
+      token.write(creds.to_json())
+
+  try:
+    service = build("gmail", "v1", credentials=creds)
+    check_unread_and_draft(service, interval=args.interval, max_results=args.max_results)
+  except HttpError as error:
+    logging.error("An error occurred: %s", error)
+
+
+if __name__ == "__main__":
+  main()
 # [END gmail_quickstart]
