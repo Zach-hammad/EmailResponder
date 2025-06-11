@@ -22,6 +22,8 @@ This simple script checks a Gmail inbox for unread messages and drafts a reply t
 1. In the [Google Cloud Console](https://console.cloud.google.com/), create OAuth client credentials for a desktop application.
 2. Download the `credentials.json` file and place it in the project root.
 3. The first time you run the script, a browser window will open to authorize access to Gmail. A `token.json` file will be generated and saved for future runs.
+4. The Gmail service is built with discovery caching disabled to avoid writing
+   cache files to disk.
 
 ## OpenAI API Key
 

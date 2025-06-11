@@ -131,7 +131,7 @@ def main() -> None:
             token.write(creds.to_json())
 
     try:
-        service = build("gmail", "v1", credentials=creds)
+        service = build("gmail", "v1", credentials=creds, cache_discovery=False)
         check_unread_and_draft(service, interval=args.interval, max_results=args.max_results)
     except HttpError as error:
         logging.error("An error occurred: %s", error)
