@@ -17,12 +17,12 @@ import os.path
 import base64
 import time
 from email.mime.text import MIMEText
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
+from googleapiclient.discovery import Resource, build
 from googleapiclient.errors import HttpError
 
 # If modifying these scopes, delete the file token.json.
@@ -33,7 +33,7 @@ SCOPES = [
 
 
 def create_draft(
-    service: Any,
+    service: Resource,
     user_id: str,
     to_addr: str,
     subject: str,
@@ -52,7 +52,7 @@ def create_draft(
     return service.users().drafts().create(userId=user_id, body=body).execute()
 
 
-def check_unread_and_draft(service: Any) -> None:
+def check_unread_and_draft(service: Resource) -> None:
     """Poll unread messages every 10 minutes and create a draft reply."""
     while True:
         results = (
@@ -90,7 +90,7 @@ def check_unread_and_draft(service: Any) -> None:
 
 def main() -> None:
     """Check unread messages and draft a response every 10 minutes."""
-    creds = None
+    creds: Credentials | None = None
     # The file token.json stores the user's access and refresh tokens, and is
     # created automatically when the authorization flow completes for the first
     # time.
@@ -108,7 +108,7 @@ def main() -> None:
             token.write(creds.to_json())
 
     try:
-        service = build("gmail", "v1", credentials=creds)
+        service: Resource = build("gmail", "v1", credentials=creds)
         check_unread_and_draft(service)
     except HttpError as error:
         print(f"An error occurred: {error}")
