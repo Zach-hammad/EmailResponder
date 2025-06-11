@@ -14,6 +14,9 @@
 
 # [START gmail_quickstart]
 import os.path
+import base64
+import time
+from email.mime.text import MIMEText
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -22,13 +25,52 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 # If modifying these scopes, delete the file token.json.
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
+
+
+def create_draft(service, user_id, to_addr, subject, body_text, thread_id=None):
+  """Create a draft message."""
+  message = MIMEText(body_text)
+  message["to"] = to_addr
+  message["from"] = user_id
+  message["subject"] = subject
+  encoded = base64.urlsafe_b64encode(message.as_bytes()).decode()
+  body = {"message": {"raw": encoded}}
+  if thread_id:
+    body["message"]["threadId"] = thread_id
+  return service.users().drafts().create(userId=user_id, body=body).execute()
+
+
+def check_unread_and_draft(service):
+  """Poll unread messages every 10 minutes and create a draft reply."""
+  while True:
+    results = service.users().messages().list(
+        userId="me", labelIds=["UNREAD"], maxResults=10
+    ).execute()
+    messages = results.get("messages", [])
+    for msg_meta in messages:
+      msg = service.users().messages().get(
+          userId="me",
+          id=msg_meta["id"],
+          format="metadata",
+          metadataHeaders=["From", "Subject"],
+      ).execute()
+      headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
+      sender = headers.get("From", "")
+      subject = headers.get("Subject", "")
+      create_draft(
+          service,
+          "me",
+          sender,
+          f"Re: {subject}",
+          "Thank you for your email.",
+          thread_id=msg.get("threadId"),
+      )
+    time.sleep(600)
 
 
 def main():
-  """Shows basic usage of the Gmail API.
-  Lists the user's Gmail labels.
-  """
+  """Check unread messages and draft a response every 10 minutes."""
   creds = None
   # The file token.json stores the user's access and refresh tokens, and is
   # created automatically when the authorization flow completes for the first
@@ -49,20 +91,9 @@ def main():
       token.write(creds.to_json())
 
   try:
-    # Call the Gmail API
     service = build("gmail", "v1", credentials=creds)
-    results = service.users().labels().list(userId="me").execute()
-    labels = results.get("labels", [])
-
-    if not labels:
-      print("No labels found.")
-      return
-    print("Labels:")
-    for label in labels:
-      print(label["name"])
-
+    check_unread_and_draft(service)
   except HttpError as error:
-    # TODO(developer) - Handle errors from gmail API.
     print(f"An error occurred: {error}")
 
 
