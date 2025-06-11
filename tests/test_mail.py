@@ -37,7 +37,8 @@ class TestCreateDraft(unittest.TestCase):
 class TestCheckUnreadAndDraft(unittest.TestCase):
     @patch("mail.time.sleep", side_effect=StopIteration)
     @patch("mail.create_draft")
-    def test_check_unread_and_draft(self, mock_create_draft, mock_sleep):
+    @patch("mail.generate_reply", return_value="AI reply")
+    def test_check_unread_and_draft(self, mock_generate_reply, mock_create_draft, mock_sleep):
         service = MagicMock()
         service.users.return_value.messages.return_value.list.return_value.execute.return_value = {
             "messages": [{"id": "m1"}]
@@ -58,12 +59,13 @@ class TestCheckUnreadAndDraft(unittest.TestCase):
         service.users.return_value.messages.return_value.list.assert_called_once_with(
             userId="me", labelIds=["UNREAD"], maxResults=10
         )
+        mock_generate_reply.assert_called_once_with("sender@example.com", "Test")
         mock_create_draft.assert_called_once_with(
             service,
             "me",
             "sender@example.com",
             "Re: Test",
-            "Thank you for your email.",
+            "AI reply",
             thread_id="t1",
         )
 
